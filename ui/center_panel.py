@@ -130,9 +130,9 @@ class CenterPanel(QWidget):
         self.polygon_editor.polygon_changed.connect(self._on_polygon_changed)
         self.polygon_layout.addWidget(self.polygon_editor)
 
-        # Кнопка подтверждения (внизу)
+        # Кнопки внизу: Подтвердить (слева) + Удалить (справа)
         btn_row = QHBoxLayout()
-        btn_row.addStretch()
+
         confirm = QPushButton("✅ Подтвердить дорогу и начать анализ")
         confirm.setFont(QFont("", 12))
         confirm.setStyleSheet("""
@@ -144,6 +144,21 @@ class CenterPanel(QWidget):
         """)
         confirm.clicked.connect(self._on_confirm_road)
         btn_row.addWidget(confirm)
+
+        btn_row.addStretch()
+
+        delete = QPushButton("🗑 Удалить видео")
+        delete.setFont(QFont("", 12))
+        delete.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626; color: white;
+                border-radius: 8px; padding: 10px 20px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #b91c1c; }
+        """)
+        delete.clicked.connect(self._on_delete)
+        btn_row.addWidget(delete)
+
         self.polygon_layout.addLayout(btn_row)
 
         self.stack.setCurrentIndex(1)
@@ -265,5 +280,23 @@ class CenterPanel(QWidget):
             self.loader = None
         self.polygon_editor = None
         self.progress_bar.setValue(0)
+
+        # Очистить контейнер редактора полигона
+        while self.polygon_layout.count():
+            item = self.polygon_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
+
         self.stack.setCurrentIndex(0)
         self.delete_btn.setVisible(False)
+
+    def _clear_layout(self, layout):
+        """Рекурсивная очистка layout."""
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
