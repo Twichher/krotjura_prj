@@ -20,18 +20,28 @@ class VideoProcessor:
         progress_callback: Callable[[int], None] = None,
         max_duration_sec: Optional[float] = None,
         should_stop: Optional[Callable[[], bool]] = None,
+        start_offset_sec: float = 0.0,
     ):
         self.video_path = video_path
         self.road_polygon = road_polygon
         self.progress_callback = progress_callback
         self.max_duration_sec = max_duration_sec
         self.should_stop = should_stop
+        self.start_offset_sec = start_offset_sec
 
         self.loader = VideoLoader(video_path)
         self.tracker = VehicleTracker()
         self.classifier = StateClassifier(road_polygon)
 
+        # Прыгаем на стартовую позицию
+        if start_offset_sec > 0 and self.loader.fps > 0:
+            start_frame = int(start_offset_sec * self.loader.fps)
+            self.loader.seek(start_frame)
+
         total_frames = self.loader.frame_count
+        remaining = total_frames - int(start_offset_sec * self.loader.fps) if self.loader.fps > 0 else total_frames
+        total_frames = remaining
+
         if max_duration_sec is not None and self.loader.fps > 0:
             total_frames = min(total_frames, int(max_duration_sec * self.loader.fps))
 
@@ -42,6 +52,7 @@ class VideoProcessor:
             width=self.loader.size[0],
             height=self.loader.size[1],
             road_polygon=road_polygon,
+            offset_sec=start_offset_sec,
         )
 
     def process(self) -> Session:
@@ -61,7 +72,7 @@ class VideoProcessor:
             if frame_id >= total:
                 break
 
-            timestamp = frame_id / self.loader.fps if self.loader.fps > 0 else 0.0
+            timestamp = self.start_offset_sec + (frame_id / self.loader.fps if self.loader.fps > 0 else 0.0)
 
             # Детекция + трекинг
             detections = self.tracker.track(frame)

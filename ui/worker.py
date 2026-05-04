@@ -16,11 +16,12 @@ class ProcessingWorker(QThread):
     finished = pyqtSignal(object)  # Session
     error = pyqtSignal(str)
 
-    def __init__(self, video_path: str, road_polygon: list, max_duration_sec=None, parent=None):
+    def __init__(self, video_path: str, road_polygon: list, max_duration_sec=None, start_offset_sec=0.0, parent=None):
         super().__init__(parent)
         self.video_path = video_path
         self.road_polygon = road_polygon
         self.max_duration_sec = max_duration_sec
+        self.start_offset_sec = start_offset_sec
 
     def run(self):
         try:
@@ -30,6 +31,7 @@ class ProcessingWorker(QThread):
                 progress_callback=self._on_progress,
                 max_duration_sec=self.max_duration_sec,
                 should_stop=lambda: self.isInterruptionRequested(),
+                start_offset_sec=self.start_offset_sec,
             )
             session = processor.process()
             if not self.isInterruptionRequested():

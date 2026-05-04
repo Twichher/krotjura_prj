@@ -42,6 +42,8 @@ class CenterPanel(QWidget):
         self._timer = None
         self._current_frame = 0
         self._last_read_frame = -1  # для оптимизации последовательного чтения
+        self.current_offset_sec = 0.0
+        self.confirmed_polygon = None
 
         self._build_ui()
 
@@ -179,8 +181,9 @@ class CenterPanel(QWidget):
     def _on_confirm_road(self):
         if self.polygon_editor is None:
             return
-        confirmed_polygon = self.polygon_editor.get_polygon()
-        self.road_confirmed.emit(confirmed_polygon)
+        self.confirmed_polygon = self.polygon_editor.get_polygon()
+        self.road_confirmed.emit(self.confirmed_polygon)
+        self.current_offset_sec = 0.0
 
         # Проверка длительности
         duration = self.loader.duration_sec if self.loader else 0.0
@@ -197,13 +200,13 @@ class CenterPanel(QWidget):
             reply = msg.exec()
             if reply == QMessageBox.StandardButton.Yes:
                 self.stack.setCurrentIndex(2)
-                self._start_processing(confirmed_polygon, max_duration_sec=30.0)
+                self._start_processing(self.confirmed_polygon, max_duration_sec=30.0)
             else:
                 self.stack.setCurrentIndex(2)
-                self._start_processing(confirmed_polygon)
+                self._start_processing(self.confirmed_polygon)
         else:
             self.stack.setCurrentIndex(2)
-            self._start_processing(confirmed_polygon)
+            self._start_processing(self.confirmed_polygon)
 
     # ------------------------------------------------------------------
     # STATE 2: PROCESSING
@@ -246,11 +249,11 @@ class CenterPanel(QWidget):
         layout.addWidget(cancel_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         return w
 
-    def _start_processing(self, polygon: list, max_duration_sec=None):
+    def _start_processing(self, polygon: list, max_duration_sec=None, start_offset_sec=0.0):
         self.progress_bar.setValue(0)
         self.progress_label.setText("⏳ Анализ видео...")
         self.progress_label.setStyleSheet("color: #ffffff;")
-        self.worker = ProcessingWorker(self.video_path, polygon, max_duration_sec)
+        self.worker = ProcessingWorker(self.video_path, polygon, max_duration_sec, start_offset_sec)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_processing_done)
         self.worker.error.connect(self._on_processing_error)
@@ -266,6 +269,14 @@ class CenterPanel(QWidget):
         self._init_player()
         self.processing_finished.emit(session)
 
+        # Показать кнопку "Следующие 30 сек" если видео не закончилось
+        if self.loader:
+            total_duration = self.loader.duration_sec
+            if total_duration > self.current_offset_sec + 30.0:
+                self.next_chunk_btn.setVisible(True)
+            else:
+                self.next_chunk_btn.setVisible(False)
+
     def _on_processing_error(self, msg: str):
         self.progress_label.setText(f"❌ Ошибка: {msg}")
         self.progress_label.setStyleSheet("color: #f87171;")
@@ -279,6 +290,31 @@ class CenterPanel(QWidget):
                 self.worker.terminate()
             self.worker = None
         self._on_delete()
+
+    def _on_next_chunk(self):
+        """Обработать следующий 30-секундный чанк видео."""
+        if self.confirmed_polygon is None or self.video_path is None:
+            return
+        if self._timer and self._timer.isActive():
+            self._timer.stop()
+            self.play_btn.setText("▶")
+
+        self.current_offset_sec += 30.0
+        self.session = None
+        self.next_chunk_btn.setVisible(False)
+        self.left_panel.reset() if hasattr(self, 'left_panel') else None
+
+        # Пересоздаём loader для корректного seek
+        if self.loader:
+            self.loader.release()
+        self.loader = VideoLoader(self.video_path)
+
+        self.stack.setCurrentIndex(2)  # PROCESSING
+        self._start_processing(
+            self.confirmed_polygon,
+            max_duration_sec=30.0,
+            start_offset_sec=self.current_offset_sec,
+        )
 
     # ------------------------------------------------------------------
     # STATE 3: PLAYER
@@ -315,6 +351,20 @@ class CenterPanel(QWidget):
         controls.addWidget(self.timeline, stretch=1)
         controls.addWidget(self.time_label)
         layout.addLayout(controls)
+
+        # Кнопка "Следующие 30 секунд" (показывается если есть ещё видео)
+        self.next_chunk_btn = QPushButton("⏭ Следующие 30 секунд")
+        self.next_chunk_btn.setFont(QFont("", 11))
+        self.next_chunk_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2563eb; color: white;
+                border-radius: 8px; padding: 8px 16px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #1d4ed8; }
+        """)
+        self.next_chunk_btn.clicked.connect(self._on_next_chunk)
+        self.next_chunk_btn.setVisible(False)
+        layout.addWidget(self.next_chunk_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         return w
 
     def _init_player(self):
@@ -323,8 +373,9 @@ class CenterPanel(QWidget):
             return
         self._current_frame = 0
         self._last_read_frame = -1
-        self.loader.seek(0)
-        self._last_read_frame = 0
+        abs_frame = int(self.session.offset_sec * self.session.fps) if self.session.fps > 0 else 0
+        self.loader.seek(abs_frame)
+        self._last_read_frame = abs_frame
         self.timeline.setRange(0, self.session.total_frames - 1)
         self._update_time_label()
         self._show_frame(0)
@@ -350,11 +401,16 @@ class CenterPanel(QWidget):
             return
         self._current_frame += 1
         self.timeline.setValue(self._current_frame)
+
+        abs_frame = self._current_frame
+        if self.session.fps > 0:
+            abs_frame += int(self.session.offset_sec * self.session.fps)
+
         # Последовательное чтение (быстро) vs seek (медленно)
-        if self._current_frame == self._last_read_frame + 1:
+        if abs_frame == self._last_read_frame + 1:
             frame = self.loader.read_frame()
             if frame is not None:
-                self._last_read_frame = self._current_frame
+                self._last_read_frame = abs_frame
                 self._display_frame(frame)
         else:
             self._show_frame(self._current_frame)
@@ -364,16 +420,22 @@ class CenterPanel(QWidget):
         if self._timer and self._timer.isActive():
             self._timer.stop()
             self.play_btn.setText("▶")
-        self._last_read_frame = self._current_frame
-        self.loader.seek(self._current_frame)
+        abs_frame = self._current_frame
+        if self.session and self.session.fps > 0:
+            abs_frame += int(self.session.offset_sec * self.session.fps)
+        self._last_read_frame = abs_frame
+        self.loader.seek(abs_frame)
         self._show_frame(self._current_frame)
 
     def _show_frame(self, frame_id: int):
         """Показать кадр с overlay через seek (для перемотки)."""
         if self.loader is None:
             return
-        frame = self.loader.seek(frame_id)
-        self._last_read_frame = frame_id
+        abs_frame = frame_id
+        if self.session and self.session.fps > 0:
+            abs_frame += int(self.session.offset_sec * self.session.fps)
+        frame = self.loader.seek(abs_frame)
+        self._last_read_frame = abs_frame
         if frame is None:
             return
         self._display_frame(frame)
@@ -428,6 +490,8 @@ class CenterPanel(QWidget):
             self.loader = None
         self.polygon_editor = None
         self.session = None
+        self.confirmed_polygon = None
+        self.current_offset_sec = 0.0
         self.progress_bar.setValue(0)
         self.progress_label.setText("⏳ Анализ видео...")
         self.progress_label.setStyleSheet("color: #ffffff;")
@@ -447,6 +511,8 @@ class CenterPanel(QWidget):
 
         self.stack.setCurrentIndex(0)
         self.delete_btn.setVisible(False)
+        if hasattr(self, 'next_chunk_btn'):
+            self.next_chunk_btn.setVisible(False)
         self.video_deleted.emit()
 
     def _clear_layout(self, layout):

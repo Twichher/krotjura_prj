@@ -24,6 +24,7 @@ class Session:
     height: int
     road_polygon: List[Tuple[int, int]] = field(default_factory=list)
     frame_results: List[FrameResult] = field(default_factory=list)
+    offset_sec: float = 0.0  # смещение чанка от начала видео
 
     # Агрегированная статистика (заполняется после обработки)
     total_moving_tracks: int = 0
