@@ -13,6 +13,7 @@ from core.road_detector import RoadDetector
 from core.session import Session
 from ui.polygon_editor import PolygonEditor
 from ui.worker import ProcessingWorker
+from core.visualizer import draw_overlay
 
 
 def cv2_to_pixmap(frame: np.ndarray) -> QPixmap:
@@ -308,13 +309,21 @@ class CenterPanel(QWidget):
         self._show_frame(self._current_frame)
 
     def _show_frame(self, frame_id: int):
-        """Показать кадр с overlay (пока без overlay — только видео)."""
+        """Показать кадр с overlay (рамки, маска дороги, подписи)."""
         if self.loader is None:
             return
         frame = self.loader.seek(frame_id)
         if frame is None:
             return
-        # TODO: добавить overlay (рамки, маска дороги)
+
+        # Overlay
+        if self.session and frame_id < len(self.session.frame_results):
+            dets = self.session.frame_results[frame_id].detections
+            frame = draw_overlay(
+                frame, dets, self.session.road_polygon,
+                draw_road=True, draw_boxes=True, draw_labels=True,
+            )
+
         pixmap = cv2_to_pixmap(frame)
         self.video_label.setPixmap(pixmap.scaled(
             self.video_label.size(),
