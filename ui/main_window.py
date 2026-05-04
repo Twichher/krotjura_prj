@@ -36,12 +36,18 @@ class MainWindow(QMainWindow):
 
         # Подключаем сигналы
         self.center_panel.video_loaded.connect(self.on_video_loaded)
+        self.center_panel.video_deleted.connect(self.on_video_deleted)
         self.center_panel.road_confirmed.connect(self.on_road_confirmed)
         self.center_panel.processing_finished.connect(self.on_processing_finished)
         self.center_panel.frame_stats_changed.connect(self.left_panel.update_stats)
 
     def on_video_loaded(self, path: str):
         """Вызывается после выбора файла и отображения 1-го кадра."""
+        self.left_panel.reset()
+        self.right_panel.reset()
+
+    def on_video_deleted(self):
+        """Вызывается после нажатия 'Удалить видео'."""
         self.left_panel.reset()
         self.right_panel.reset()
 

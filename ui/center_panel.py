@@ -27,6 +27,7 @@ def cv2_to_pixmap(frame: np.ndarray) -> QPixmap:
 
 class CenterPanel(QWidget):
     video_loaded = pyqtSignal(str)
+    video_deleted = pyqtSignal()
     road_confirmed = pyqtSignal(list)   # List[Tuple[int, int]]
     processing_finished = pyqtSignal(object)  # Session
     frame_stats_changed = pyqtSignal(int, int, int)  # moving, stopped, parked
@@ -40,6 +41,7 @@ class CenterPanel(QWidget):
         self.worker = None
         self._timer = None
         self._current_frame = 0
+        self._last_read_frame = -1  # для оптимизации последовательного чтения
 
         self._build_ui()
 
@@ -274,6 +276,9 @@ class CenterPanel(QWidget):
         if self.session is None:
             return
         self._current_frame = 0
+        self._last_read_frame = -1
+        self.loader.seek(0)
+        self._last_read_frame = 0
         self.timeline.setRange(0, self.session.total_frames - 1)
         self._update_time_label()
         self._show_frame(0)
@@ -299,23 +304,37 @@ class CenterPanel(QWidget):
             return
         self._current_frame += 1
         self.timeline.setValue(self._current_frame)
-        self._show_frame(self._current_frame)
+        # Последовательное чтение (быстро) vs seek (медленно)
+        if self._current_frame == self._last_read_frame + 1:
+            frame = self.loader.read_frame()
+            if frame is not None:
+                self._last_read_frame = self._current_frame
+                self._display_frame(frame)
+        else:
+            self._show_frame(self._current_frame)
 
     def _on_seek(self):
         self._current_frame = self.timeline.value()
         if self._timer and self._timer.isActive():
             self._timer.stop()
             self.play_btn.setText("▶")
+        self._last_read_frame = self._current_frame
+        self.loader.seek(self._current_frame)
         self._show_frame(self._current_frame)
 
     def _show_frame(self, frame_id: int):
-        """Показать кадр с overlay (рамки, маска дороги, подписи)."""
+        """Показать кадр с overlay через seek (для перемотки)."""
         if self.loader is None:
             return
         frame = self.loader.seek(frame_id)
+        self._last_read_frame = frame_id
         if frame is None:
             return
+        self._display_frame(frame)
 
+    def _display_frame(self, frame: np.ndarray):
+        """Отрисовать overlay и показать кадр (frame уже прочитан)."""
+        frame_id = self._current_frame
         # Overlay
         if self.session and frame_id < len(self.session.frame_results):
             dets = self.session.frame_results[frame_id].detections
@@ -366,6 +385,8 @@ class CenterPanel(QWidget):
         self.progress_bar.setValue(0)
         self.progress_label.setText("⏳ Анализ видео...")
         self.progress_label.setStyleSheet("color: #ffffff;")
+        self._current_frame = 0
+        self._last_read_frame = -1
 
         if self._timer and self._timer.isActive():
             self._timer.stop()
@@ -380,6 +401,7 @@ class CenterPanel(QWidget):
 
         self.stack.setCurrentIndex(0)
         self.delete_btn.setVisible(False)
+        self.video_deleted.emit()
 
     def _clear_layout(self, layout):
         while layout.count():
