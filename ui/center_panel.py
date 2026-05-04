@@ -184,20 +184,20 @@ class CenterPanel(QWidget):
 
         # Проверка длительности
         duration = self.loader.duration_sec if self.loader else 0.0
-        if duration > 60.0:
+        if duration > 30.0:
             msg = QMessageBox(self)
             msg.setWindowTitle("Длительное видео")
-            msg.setText(f"Видео длится {duration:.0f} секунд.\nОбрезать до 1 минуты для ускорения?")
+            msg.setText(f"Видео длится {duration:.0f} секунд.\nОбрезать до 30 секунд для ускорения?")
             msg.setStandardButtons(
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
-            msg.button(QMessageBox.StandardButton.Yes).setText("✂️ Обрезать до 1 минуты")
+            msg.button(QMessageBox.StandardButton.Yes).setText("✂️ Обрезать до 30 секунд")
             msg.button(QMessageBox.StandardButton.No).setText("📼 Обрабатывать полностью")
             msg.setDefaultButton(QMessageBox.StandardButton.Yes)
             reply = msg.exec()
             if reply == QMessageBox.StandardButton.Yes:
                 self.stack.setCurrentIndex(2)
-                self._start_processing(confirmed_polygon, max_duration_sec=60.0)
+                self._start_processing(confirmed_polygon, max_duration_sec=30.0)
             else:
                 self.stack.setCurrentIndex(2)
                 self._start_processing(confirmed_polygon)
