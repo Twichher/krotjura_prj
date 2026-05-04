@@ -69,5 +69,5 @@ class RightPanel(QWidget):
         self.setEnabled(True)
         self.total_moving.set_value(session.total_moving_tracks)
         self.total_stopped.set_value(session.total_stopped_tracks)
-        self.total_parked.set_value(session.total_parked_tracks)
+        self.total_parked.set_value(session.max_parked_at_once)
         self.total_tracks.set_value(session.total_unique_tracks)

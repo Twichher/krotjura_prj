@@ -25,14 +25,16 @@ class StateClassifier:
         self,
         road_polygon: List[Tuple[int, int]],
         move_threshold_px: float = 1.5,      # px/кадр (30 FPS, камера высоко)
-        stop_timeout_sec: float = 2.0,       # секунд до 'stopped'
-        park_timeout_sec: float = 4.0,       # секунд до 'parked' на дороге
+        stop_timeout_sec: float = 2.0,       # секунд до 'stopped' (светофор)
+        park_timeout_on_road: float = 20.0,  # секунд до 'parked' на дороге
+        park_timeout_off_road: float = 3.0,  # секунд до 'parked' вне дороги
         speed_window: int = 3,               # усреднение по N кадрам
     ):
         self.road_polygon = np.array(road_polygon, dtype=np.int32)
         self.move_threshold = move_threshold_px
         self.stop_timeout = stop_timeout_sec
-        self.park_timeout = park_timeout_sec
+        self.park_timeout_on_road = park_timeout_on_road
+        self.park_timeout_off_road = park_timeout_off_road
         self.speed_window = speed_window
 
         self.tracks: Dict[int, TrackState] = {}
@@ -62,8 +64,8 @@ class StateClassifier:
             # Скорость (px/кадр, усредненная)
             speed = self._calc_speed(track)
 
-            # Внутри ли дороги?
-            on_road = cv2.pointPolygonTest(self.road_polygon, (cx, cy), False) >= 0
+            # Где находится машина относительно дороги?
+            on_road = self._is_on_road(x1, y1, x2, y2)
 
             # Классификация
             state = self._classify(track, speed, on_road, timestamp)
@@ -80,6 +82,31 @@ class StateClassifier:
 
         return results
 
+    # ------------------------------------------------------------------
+    # Геометрия: где машина относительно дороги
+    # ------------------------------------------------------------------
+    def _is_on_road(self, x1: int, y1: int, x2: int, y2: int) -> bool:
+        """Проверить, находится ли машина (в основном) внутри полигона дороги.
+
+        Проверяем 5 точек: центр + 4 угла bbox.
+        Если >= 3 точек внутри полигона — считаем 'на дороге'.
+        """
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+        points = [
+            (cx, cy),      # центр
+            (x1, y1),      # левый верх
+            (x2, y1),      # правый верх
+            (x2, y2),      # правый низ
+            (x1, y2),      # левый низ
+        ]
+        inside = sum(
+            1 for p in points if cv2.pointPolygonTest(self.road_polygon, p, False) >= 0
+        )
+        return inside >= 3
+
+    # ------------------------------------------------------------------
+    # Скорость
+    # ------------------------------------------------------------------
     def _calc_speed(self, track: TrackState) -> float:
         """Средняя скорость за последние speed_window позиций (px/кадр)."""
         if len(track.positions) < 2:
@@ -93,6 +120,9 @@ class StateClassifier:
             total_dist += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         return total_dist / (window - 1)
 
+    # ------------------------------------------------------------------
+    # Классификация состояния
+    # ------------------------------------------------------------------
     def _classify(
         self, track: TrackState, speed: float, on_road: bool, now: float
     ) -> str:
@@ -107,17 +137,20 @@ class StateClassifier:
 
         stopped_for = now - track.stop_start_time
 
-        # Если вне дороги — сразу parked (скорее всего парковка/обочина)
-        if not on_road:
-            return "parked"
-
-        # На дороге: короткая остановка = stopped, долгая = parked
-        if stopped_for < self.stop_timeout:
-            return "stopped"
-        elif stopped_for < self.park_timeout:
-            return "stopped"
+        if on_road:
+            # На дороге: короткая остановка = stopped (светофор/пробка)
+            if stopped_for < self.stop_timeout:
+                return "stopped"
+            elif stopped_for < self.park_timeout_on_road:
+                return "stopped"
+            else:
+                return "parked"
         else:
-            return "parked"
+            # Вне дороги (парковка, обочина): parked раньше
+            if stopped_for < self.park_timeout_off_road:
+                return "stopped"
+            else:
+                return "parked"
 
     def get_track_history(self, track_id: int) -> TrackState:
         return self.tracks[track_id]
