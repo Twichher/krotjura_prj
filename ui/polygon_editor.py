@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QGraphicsPolygonItem, QGraphicsEllipseItem,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF
-from PyQt6.QtGui import QPixmap, QPen, QBrush, QColor, QPolygonF
+from PyQt6.QtGui import QPixmap, QPen, QBrush, QColor, QPolygonF, QPainter
 
 
 class DraggableVertex(QGraphicsEllipseItem):
@@ -153,7 +153,7 @@ class PolygonEditor(QGraphicsView):
         self.setScene(self.scene)
 
         # Настройки отображения
-        self.setRenderHints(self.renderHints() | Qt.RenderHint.Antialiasing)
+        self.setRenderHints(QPainter.RenderHint.Antialiasing)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("border: none; background-color: #000000;")
