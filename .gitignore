@@ -1,0 +1,48 @@
+# Virtual environments
+detector_env/
+venv/
+.env/
+.venv/
+env/
+
+# Video datasets (large files)
+video/
+video_really_good_one/
+*.avi
+*.mp4
+*.mov
+*.mkv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyQt / Qt
+*.qmlc
+*.jsc
+
+# Logs
+*.log
