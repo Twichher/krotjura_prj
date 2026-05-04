@@ -42,12 +42,18 @@ class MainWindow(QMainWindow):
 
         # Подключаем сигналы
         self.center_panel.video_loaded.connect(self.on_video_loaded)
+        self.center_panel.road_confirmed.connect(self.on_road_confirmed)
         self.center_panel.processing_finished.connect(self.on_processing_finished)
 
     def on_video_loaded(self, path: str):
         """Вызывается после выбора файла и отображения 1-го кадра."""
         self.left_panel.reset()
         self.right_panel.reset()
+
+    def on_road_confirmed(self, polygon: list):
+        """Вызывается после подтверждения полигона дороги пользователем."""
+        # TODO: передать полигон в процессор
+        pass
 
     def on_processing_finished(self, results: dict):
         """Вызывается после окончания pre-processing."""
