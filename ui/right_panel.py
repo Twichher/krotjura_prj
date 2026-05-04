@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
+    QWidget, QVBoxLayout, QLabel, QFrame,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -64,7 +64,10 @@ class RightPanel(QWidget):
         self.total_tracks.set_value(0)
         self.setEnabled(False)
 
-    def set_results(self, results: dict):
+    def set_session(self, session):
+        """Заполнить статистику из Session."""
         self.setEnabled(True)
-        # TODO: заполнить из реальных результатов
-        pass
+        self.total_moving.set_value(session.total_moving_tracks)
+        self.total_stopped.set_value(session.total_stopped_tracks)
+        self.total_parked.set_value(session.total_parked_tracks)
+        self.total_tracks.set_value(session.total_unique_tracks)

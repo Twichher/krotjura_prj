@@ -14,29 +14,23 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Krotjura — Анализ дорожного движения")
         self.setMinimumSize(1200, 700)
 
-        # Центральный виджет с горизонтальным layout
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Сплиттер для ресайза панелей
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Левая панель — текущая статистика
         self.left_panel = LeftPanel()
         splitter.addWidget(self.left_panel)
 
-        # Центральная панель — видео + контролы
         self.center_panel = CenterPanel()
         splitter.addWidget(self.center_panel)
 
-        # Правая панель — история
         self.right_panel = RightPanel()
         splitter.addWidget(self.right_panel)
 
-        # Пропорции: левая 1, центр 3, правая 1
         splitter.setSizes([250, 700, 250])
         layout.addWidget(splitter)
 
@@ -44,6 +38,7 @@ class MainWindow(QMainWindow):
         self.center_panel.video_loaded.connect(self.on_video_loaded)
         self.center_panel.road_confirmed.connect(self.on_road_confirmed)
         self.center_panel.processing_finished.connect(self.on_processing_finished)
+        self.center_panel.frame_stats_changed.connect(self.left_panel.update_stats)
 
     def on_video_loaded(self, path: str):
         """Вызывается после выбора файла и отображения 1-го кадра."""
@@ -52,10 +47,9 @@ class MainWindow(QMainWindow):
 
     def on_road_confirmed(self, polygon: list):
         """Вызывается после подтверждения полигона дороги пользователем."""
-        # TODO: передать полигон в процессор
         pass
 
-    def on_processing_finished(self, results: dict):
+    def on_processing_finished(self, session):
         """Вызывается после окончания pre-processing."""
         self.left_panel.set_enabled(True)
-        self.right_panel.set_results(results)
+        self.right_panel.set_session(session)

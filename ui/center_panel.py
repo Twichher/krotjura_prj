@@ -10,7 +10,9 @@ import os
 
 from core.video_loader import VideoLoader
 from core.road_detector import RoadDetector
+from core.session import Session
 from ui.polygon_editor import PolygonEditor
+from ui.worker import ProcessingWorker
 
 
 def cv2_to_pixmap(frame: np.ndarray) -> QPixmap:
@@ -25,14 +27,18 @@ def cv2_to_pixmap(frame: np.ndarray) -> QPixmap:
 class CenterPanel(QWidget):
     video_loaded = pyqtSignal(str)
     road_confirmed = pyqtSignal(list)   # List[Tuple[int, int]]
-    processing_finished = pyqtSignal(dict)
+    processing_finished = pyqtSignal(object)  # Session
+    frame_stats_changed = pyqtSignal(int, int, int)  # moving, stopped, parked
 
     def __init__(self):
         super().__init__()
         self.video_path = None
         self.loader = None
         self.polygon_editor = None
-        self.frame_results = None
+        self.session = None
+        self.worker = None
+        self._timer = None
+        self._current_frame = 0
 
         self._build_ui()
 
@@ -66,7 +72,7 @@ class CenterPanel(QWidget):
 
         layout.addWidget(self.stack, stretch=1)
 
-        # Кнопка удалить
+        # Кнопка удалить (под плеером)
         bottom = QHBoxLayout()
         bottom.addStretch()
         self.delete_btn = QPushButton("🗑 Удалить видео")
@@ -119,11 +125,12 @@ class CenterPanel(QWidget):
     # ------------------------------------------------------------------
     def _show_polygon_editor(self, frame: np.ndarray, polygon: list):
         """Создать/пересоздать редактор полигона поверх 1-го кадра."""
-        # Очистить контейнер
         while self.polygon_layout.count():
             item = self.polygon_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
 
         pixmap = cv2_to_pixmap(frame)
         self.polygon_editor = PolygonEditor(pixmap, polygon)
@@ -164,8 +171,7 @@ class CenterPanel(QWidget):
         self.stack.setCurrentIndex(1)
 
     def _on_polygon_changed(self, polygon: list):
-        """Вызывается при drag-вершин или добавлении точки."""
-        pass  # Можно логировать или показывать preview
+        pass
 
     def _on_confirm_road(self):
         if self.polygon_editor is None:
@@ -204,21 +210,26 @@ class CenterPanel(QWidget):
         return w
 
     def _start_processing(self, polygon: list):
-        # TODO: заменить на реальную обработку в QThread
         self.progress_bar.setValue(0)
-        self._simulate_processing()
+        self.worker = ProcessingWorker(self.video_path, polygon)
+        self.worker.progress.connect(self._on_progress)
+        self.worker.finished.connect(self._on_processing_done)
+        self.worker.error.connect(self._on_processing_error)
+        self.worker.start()
 
-    def _simulate_processing(self):
-        import random
-        val = self.progress_bar.value()
-        val = min(val + random.randint(5, 15), 100)
-        self.progress_bar.setValue(val)
-        if val < 100:
-            QTimer.singleShot(200, self._simulate_processing)
-        else:
-            self.stack.setCurrentIndex(3)  # PLAYER
-            self.delete_btn.setVisible(True)
-            self.processing_finished.emit({})
+    def _on_progress(self, pct: int):
+        self.progress_bar.setValue(pct)
+
+    def _on_processing_done(self, session: Session):
+        self.session = session
+        self.stack.setCurrentIndex(3)  # PLAYER
+        self.delete_btn.setVisible(True)
+        self._init_player()
+        self.processing_finished.emit(session)
+
+    def _on_processing_error(self, msg: str):
+        self.progress_label.setText(f"❌ Ошибка: {msg}")
+        self.progress_label.setStyleSheet("color: #f87171;")
 
     # ------------------------------------------------------------------
     # STATE 3: PLAYER
@@ -241,9 +252,11 @@ class CenterPanel(QWidget):
         self.play_btn = QPushButton("▶")
         self.play_btn.setFixedSize(40, 40)
         self.play_btn.setStyleSheet("font-size: 16px;")
+        self.play_btn.clicked.connect(self._toggle_play)
 
         self.timeline = QSlider(Qt.Orientation.Horizontal)
         self.timeline.setRange(0, 100)
+        self.timeline.sliderReleased.connect(self._on_seek)
 
         self.time_label = QLabel("00:00 / 00:00")
         self.time_label.setStyleSheet("color: #aaaaaa;")
@@ -255,21 +268,82 @@ class CenterPanel(QWidget):
         layout.addLayout(controls)
         return w
 
+    def _init_player(self):
+        """Подготовить плеер после окончания обработки."""
+        if self.session is None:
+            return
+        self._current_frame = 0
+        self.timeline.setRange(0, self.session.total_frames - 1)
+        self._update_time_label()
+        self._show_frame(0)
+
+    def _toggle_play(self):
+        if self._timer is None:
+            self._timer = QTimer(self)
+            self._timer.timeout.connect(self._next_frame)
+        if self._timer.isActive():
+            self._timer.stop()
+            self.play_btn.setText("▶")
+        else:
+            interval = int(1000 / self.session.fps) if self.session.fps > 0 else 33
+            self._timer.start(interval)
+            self.play_btn.setText("⏸")
+
+    def _next_frame(self):
+        if self.session is None:
+            return
+        if self._current_frame >= self.session.total_frames - 1:
+            self._timer.stop()
+            self.play_btn.setText("▶")
+            return
+        self._current_frame += 1
+        self.timeline.setValue(self._current_frame)
+        self._show_frame(self._current_frame)
+
+    def _on_seek(self):
+        self._current_frame = self.timeline.value()
+        if self._timer and self._timer.isActive():
+            self._timer.stop()
+            self.play_btn.setText("▶")
+        self._show_frame(self._current_frame)
+
+    def _show_frame(self, frame_id: int):
+        """Показать кадр с overlay (пока без overlay — только видео)."""
+        if self.loader is None:
+            return
+        frame = self.loader.seek(frame_id)
+        if frame is None:
+            return
+        # TODO: добавить overlay (рамки, маска дороги)
+        pixmap = cv2_to_pixmap(frame)
+        self.video_label.setPixmap(pixmap.scaled(
+            self.video_label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        ))
+        self._update_time_label()
+
+        # Обновить текущую статистику
+        if self.session:
+            m, s, p = self.session.get_stats_at_frame(frame_id)
+            self.frame_stats_changed.emit(m, s, p)
+
+    def _update_time_label(self):
+        if self.session is None:
+            return
+        cur = self._current_frame / self.session.fps if self.session.fps > 0 else 0
+        tot = self.session.total_frames / self.session.fps if self.session.fps > 0 else 0
+        self.time_label.setText(f"{cur:.1f}s / {tot:.1f}s")
+
     # ------------------------------------------------------------------
     # Публичные методы
     # ------------------------------------------------------------------
     def load_video(self, path: str):
         self.video_path = path
         self.loader = VideoLoader(path)
-
-        # Читаем 1-й кадр
         frame = self.loader.read_first_frame()
-
-        # Авто-полигон дороги
         detector = RoadDetector()
         polygon = detector.detect(frame)
-
-        # Показываем редактор
         self._show_polygon_editor(frame, polygon)
         self.video_loaded.emit(path)
 
@@ -279,9 +353,15 @@ class CenterPanel(QWidget):
             self.loader.release()
             self.loader = None
         self.polygon_editor = None
+        self.session = None
         self.progress_bar.setValue(0)
+        self.progress_label.setText("⏳ Анализ видео...")
+        self.progress_label.setStyleSheet("color: #ffffff;")
 
-        # Очистить контейнер редактора полигона
+        if self._timer and self._timer.isActive():
+            self._timer.stop()
+            self._timer = None
+
         while self.polygon_layout.count():
             item = self.polygon_layout.takeAt(0)
             if item.widget():
@@ -293,7 +373,6 @@ class CenterPanel(QWidget):
         self.delete_btn.setVisible(False)
 
     def _clear_layout(self, layout):
-        """Рекурсивная очистка layout."""
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
