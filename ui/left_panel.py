@@ -16,11 +16,11 @@ class StatRow(QFrame):
 
         self.title = QLabel(label)
         self.title.setStyleSheet(f"color: {color}; font-weight: bold;")
-        self.title.setFont(QFont(11))
+        self.title.setFont(QFont("", 11))
 
         self.value = QLabel("0")
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.value.setFont(QFont(24, QFont.Weight.Bold))
+        self.value.setFont(QFont("", 24, QFont.Weight.Bold))
         self.value.setStyleSheet("color: #ffffff;")
 
         layout.addWidget(self.title)
@@ -42,7 +42,7 @@ class LeftPanel(QWidget):
         layout.setSpacing(12)
 
         header = QLabel("🎯 Текущий кадр")
-        header.setFont(QFont(14, QFont.Weight.Bold))
+        header.setFont(QFont("", 14, QFont.Weight.Bold))
         header.setStyleSheet("color: #ffffff; margin-bottom: 8px;")
         layout.addWidget(header)
 

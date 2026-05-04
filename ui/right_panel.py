@@ -13,11 +13,11 @@ class HistoryRow(QFrame):
         layout.setContentsMargins(12, 8, 12, 8)
 
         self.title = QLabel(label)
-        self.title.setFont(QFont(11))
+        self.title.setFont(QFont("", 11))
         self.title.setStyleSheet("color: #cccccc;")
 
         self.value = QLabel("0")
-        self.value.setFont(QFont(14, QFont.Weight.Bold))
+        self.value.setFont(QFont("", 14, QFont.Weight.Bold))
         self.value.setStyleSheet("color: #ffffff;")
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -40,7 +40,7 @@ class RightPanel(QWidget):
         layout.setSpacing(12)
 
         header = QLabel("📊 История")
-        header.setFont(QFont(14, QFont.Weight.Bold))
+        header.setFont(QFont("", 14, QFont.Weight.Bold))
         header.setStyleSheet("color: #ffffff; margin-bottom: 8px;")
         layout.addWidget(header)
 

@@ -77,7 +77,7 @@ class CenterPanel(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.upload_btn = QPushButton("📁 Загрузить видео")
-        self.upload_btn.setFont(QFont(16))
+        self.upload_btn.setFont(QFont("", 16))
         self.upload_btn.setMinimumSize(300, 80)
         self.upload_btn.setStyleSheet("""
             QPushButton {
@@ -110,7 +110,7 @@ class CenterPanel(QWidget):
 
         self.polygon_label = QLabel("🛣 Здесь будет редактор полигона дороги")
         self.polygon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.polygon_label.setFont(QFont(14))
+        self.polygon_label.setFont(QFont("", 14))
         self.polygon_label.setStyleSheet("color: #aaaaaa;")
         layout.addWidget(self.polygon_label)
 
@@ -143,7 +143,7 @@ class CenterPanel(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.progress_label = QLabel("⏳ Анализ видео...")
-        self.progress_label.setFont(QFont(16))
+        self.progress_label.setFont(QFont("", 16))
         self.progress_label.setStyleSheet("color: #ffffff;")
         self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.progress_label)
