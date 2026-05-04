@@ -153,7 +153,7 @@ class PolygonEditor(QGraphicsView):
         self.setScene(self.scene)
 
         # Настройки отображения
-        self.setRenderHints(self.renderHints() | self.RenderHint.Antialiasing)
+        self.setRenderHints(self.renderHints() | Qt.RenderHint.Antialiasing)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("border: none; background-color: #000000;")
