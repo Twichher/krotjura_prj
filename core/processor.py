@@ -3,7 +3,7 @@
 Чистый Python, не зависит от Qt.
 """
 
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Optional
 import numpy as np
 
 from core.video_loader import VideoLoader
@@ -18,32 +18,47 @@ class VideoProcessor:
         video_path: str,
         road_polygon: List[Tuple[int, int]],
         progress_callback: Callable[[int], None] = None,
+        max_duration_sec: Optional[float] = None,
+        should_stop: Optional[Callable[[], bool]] = None,
     ):
         self.video_path = video_path
         self.road_polygon = road_polygon
         self.progress_callback = progress_callback
+        self.max_duration_sec = max_duration_sec
+        self.should_stop = should_stop
 
         self.loader = VideoLoader(video_path)
         self.tracker = VehicleTracker()
         self.classifier = StateClassifier(road_polygon)
 
+        total_frames = self.loader.frame_count
+        if max_duration_sec is not None and self.loader.fps > 0:
+            total_frames = min(total_frames, int(max_duration_sec * self.loader.fps))
+
         self.session = Session(
             video_path=video_path,
             fps=self.loader.fps,
-            total_frames=self.loader.frame_count,
+            total_frames=total_frames,
             width=self.loader.size[0],
             height=self.loader.size[1],
             road_polygon=road_polygon,
         )
 
     def process(self) -> Session:
-        """Обработать всё видео кадр за кадром."""
-        total = self.loader.frame_count
+        """Обработать видео кадр за кадром (с ограничением по длительности)."""
+        total = self.session.total_frames
         frame_id = 0
 
         while True:
+            if self.should_stop and self.should_stop():
+                break
+
             frame = self.loader.read_frame()
             if frame is None:
+                break
+
+            # Ограничение по длительности
+            if frame_id >= total:
                 break
 
             timestamp = frame_id / self.loader.fps if self.loader.fps > 0 else 0.0

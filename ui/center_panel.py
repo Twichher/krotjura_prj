@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QStackedWidget, QProgressBar, QSlider, QFileDialog,
+    QStackedWidget, QProgressBar, QSlider, QFileDialog, QMessageBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QImage
@@ -181,8 +181,29 @@ class CenterPanel(QWidget):
             return
         confirmed_polygon = self.polygon_editor.get_polygon()
         self.road_confirmed.emit(confirmed_polygon)
-        self.stack.setCurrentIndex(2)  # PROCESSING
-        self._start_processing(confirmed_polygon)
+
+        # Проверка длительности
+        duration = self.loader.duration_sec if self.loader else 0.0
+        if duration > 60.0:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Длительное видео")
+            msg.setText(f"Видео длится {duration:.0f} секунд.\nОбрезать до 1 минуты для ускорения?")
+            msg.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            msg.button(QMessageBox.StandardButton.Yes).setText("✂️ Обрезать до 1 минуты")
+            msg.button(QMessageBox.StandardButton.No).setText("📼 Обрабатывать полностью")
+            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+            reply = msg.exec()
+            if reply == QMessageBox.StandardButton.Yes:
+                self.stack.setCurrentIndex(2)
+                self._start_processing(confirmed_polygon, max_duration_sec=60.0)
+            else:
+                self.stack.setCurrentIndex(2)
+                self._start_processing(confirmed_polygon)
+        else:
+            self.stack.setCurrentIndex(2)
+            self._start_processing(confirmed_polygon)
 
     # ------------------------------------------------------------------
     # STATE 2: PROCESSING
@@ -210,11 +231,26 @@ class CenterPanel(QWidget):
             QProgressBar::chunk { background-color: #2563eb; border-radius: 6px; }
         """)
         layout.addWidget(self.progress_bar)
+
+        # Кнопка отмены обработки
+        cancel_btn = QPushButton("🛑 Отменить обработку")
+        cancel_btn.setFont(QFont("", 12))
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626; color: white;
+                border-radius: 8px; padding: 10px 20px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #b91c1c; }
+        """)
+        cancel_btn.clicked.connect(self._on_cancel_processing)
+        layout.addWidget(cancel_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         return w
 
-    def _start_processing(self, polygon: list):
+    def _start_processing(self, polygon: list, max_duration_sec=None):
         self.progress_bar.setValue(0)
-        self.worker = ProcessingWorker(self.video_path, polygon)
+        self.progress_label.setText("⏳ Анализ видео...")
+        self.progress_label.setStyleSheet("color: #ffffff;")
+        self.worker = ProcessingWorker(self.video_path, polygon, max_duration_sec)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_processing_done)
         self.worker.error.connect(self._on_processing_error)
@@ -233,6 +269,16 @@ class CenterPanel(QWidget):
     def _on_processing_error(self, msg: str):
         self.progress_label.setText(f"❌ Ошибка: {msg}")
         self.progress_label.setStyleSheet("color: #f87171;")
+
+    def _on_cancel_processing(self):
+        """Прервать обработку и сбросить всё."""
+        if self.worker and self.worker.isRunning():
+            self.worker.requestInterruption()
+            self.worker.wait(3000)
+            if self.worker.isRunning():
+                self.worker.terminate()
+            self.worker = None
+        self._on_delete()
 
     # ------------------------------------------------------------------
     # STATE 3: PLAYER
